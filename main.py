@@ -1,7 +1,9 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file, Response
 from flask_cors import CORS
 import yt_dlp
 import os
+import uuid
+import threading
 
 app = Flask(__name__)
 CORS(app)
@@ -20,84 +22,62 @@ def download():
         return jsonify({"error": "URL gerekli"}), 400
 
     try:
+        file_id = str(uuid.uuid4())
+        output_path = f"/tmp/{file_id}.%(ext)s"
+
         if fmt == 'mp3':
             ydl_opts = {
                 'format': 'bestaudio/best',
+                'outtmpl': output_path,
+                'postprocessors': [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                    'preferredquality': '192',
+                }],
                 'quiet': True,
                 'no_warnings': True,
             }
         else:
             ydl_opts = {
-                'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+                'format': 'bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best[ext=mp4][height<=720]/best[height<=720]/best',
+                'outtmpl': output_path,
                 'quiet': True,
                 'no_warnings': True,
                 'merge_output_format': 'mp4',
             }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+            info = ydl.extract_info(url, download=True)
             title = info.get('title', 'video')
-            thumbnail = info.get('thumbnail', '')
-            formats = info.get('formats', [])
+            ext = 'mp3' if fmt == 'mp3' else 'mp4'
 
-            if fmt == 'mp3':
-                # En iyi ses formatını bul
-                audio_formats = [
-                    f for f in formats 
-                    if f.get('acodec') != 'none' 
-                    and f.get('vcodec') == 'none'
-                    and f.get('url')
-                ]
-                if audio_formats:
-                    audio_formats.sort(key=lambda x: x.get('abr') or 0, reverse=True)
-                    download_url = audio_formats[0]['url']
-                else:
-                    # Ses+video birleşik format
-                    combined = [f for f in formats if f.get('acodec') != 'none' and f.get('url')]
-                    if combined:
-                        download_url = combined[-1]['url']
-                    else:
-                        return jsonify({"error": "Ses formatı bulunamadı"}), 400
-            else:
-                # Ses+video birleşik mp4 formatı bul
-                mp4_combined = [
-                    f for f in formats
-                    if f.get('ext') == 'mp4'
-                    and f.get('vcodec') != 'none'
-                    and f.get('acodec') != 'none'
-                    and f.get('url')
-                ]
-                
-                if mp4_combined:
-                    # En yüksek kaliteyi seç
-                    mp4_combined.sort(key=lambda x: (x.get('height') or 0), reverse=True)
-                    download_url = mp4_combined[0]['url']
-                else:
-                    # Birleşik format yok, en iyi genel formatı al
-                    all_combined = [
-                        f for f in formats
-                        if f.get('vcodec') != 'none'
-                        and f.get('acodec') != 'none'
-                        and f.get('url')
-                    ]
-                    if all_combined:
-                        all_combined.sort(key=lambda x: (x.get('height') or 0), reverse=True)
-                        download_url = all_combined[0]['url']
-                    else:
-                        # Son çare - herhangi bir format
-                        valid = [f for f in formats if f.get('url')]
-                        if valid:
-                            download_url = valid[-1]['url']
-                        else:
-                            return jsonify({"error": "İndirilebilir format bulunamadı"}), 400
+        # Dosyayı bul
+        final_path = None
+        for f in os.listdir('/tmp'):
+            if f.startswith(file_id):
+                final_path = f"/tmp/{f}"
+                break
 
-        return jsonify({
-            "success": True,
-            "title": title,
-            "thumbnail": thumbnail,
-            "downloadUrl": download_url,
-            "format": fmt
-        })
+        if not final_path or not os.path.exists(final_path):
+            return jsonify({"error": "Dosya oluşturulamadı"}), 500
+
+        mimetype = 'audio/mpeg' if fmt == 'mp3' else 'video/mp4'
+
+        def cleanup():
+            try:
+                os.remove(final_path)
+            except:
+                pass
+
+        response = send_file(
+            final_path,
+            mimetype=mimetype,
+            as_attachment=True,
+            download_name=f"{file_id}.{ext}"
+        )
+
+        threading.Timer(60, cleanup).start()
+        return response
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
