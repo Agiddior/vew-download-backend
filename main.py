@@ -1,8 +1,7 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 import yt_dlp
 import os
-import uuid
 
 app = Flask(__name__)
 CORS(app)
@@ -21,50 +20,50 @@ def download():
         return jsonify({"error": "URL gerekli"}), 400
 
     try:
-        file_id = str(uuid.uuid4())
-        output_path = f"/tmp/{file_id}.%(ext)s"
-
         if fmt == 'mp3':
             ydl_opts = {
                 'format': 'bestaudio/best',
-                'outtmpl': output_path,
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                }],
                 'quiet': True,
+                'no_warnings': True,
             }
         else:
             ydl_opts = {
                 'format': 'best[ext=mp4]/best',
-                'outtmpl': output_path,
                 'quiet': True,
+                'no_warnings': True,
             }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+            info = ydl.extract_info(url, download=False)
             title = info.get('title', 'video')
-            ext = 'mp3' if fmt == 'mp3' else info.get('ext', 'mp4')
             thumbnail = info.get('thumbnail', '')
+            
+            # Direkt indirme URL'ini al
+            if fmt == 'mp3':
+                formats = info.get('formats', [])
+                audio_formats = [f for f in formats if f.get('acodec') != 'none' and f.get('vcodec') == 'none']
+                if audio_formats:
+                    download_url = audio_formats[-1].get('url', '')
+                else:
+                    download_url = formats[-1].get('url', '') if formats else ''
+            else:
+                formats = info.get('formats', [])
+                mp4_formats = [f for f in formats if f.get('ext') == 'mp4' and f.get('vcodec') != 'none']
+                if mp4_formats:
+                    download_url = mp4_formats[-1].get('url', '')
+                else:
+                    download_url = formats[-1].get('url', '') if formats else ''
 
-        final_path = f"/tmp/{file_id}.{ext}"
+        if not download_url:
+            return jsonify({"error": "Video URL bulunamadı"}), 400
 
-        if not os.path.exists(final_path):
-            # Dosyayı bul
-            for f in os.listdir('/tmp'):
-                if f.startswith(file_id):
-                    final_path = f"/tmp/{f}"
-                    break
-
-        file_size = os.path.getsize(final_path)
-        file_size_mb = f"{round(file_size / 1024 / 1024, 1)} MB"
-
-        return send_file(
-            final_path,
-            as_attachment=True,
-            download_name=f"{title}.{ext}",
-            mimetype='video/mp4' if ext == 'mp4' else 'audio/mpeg'
-        )
+        return jsonify({
+            "success": True,
+            "title": title,
+            "thumbnail": thumbnail,
+            "downloadUrl": download_url,
+            "format": fmt
+        })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
