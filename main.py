@@ -39,15 +39,7 @@ def download():
                 'preferredquality': '192',
             }]
         else:
-            ydl_opts['format'] = (
-                'bestvideo[ext=mp4][height<=720][vcodec^=avc]+bestaudio[ext=m4a]'
-                '/bestvideo[ext=mp4][height<=720]+bestaudio'
-                '/best[ext=mp4][height<=720]'
-                '/best[height<=720]'
-                '/best'
-            )
-            ydl_opts['merge_output_format'] = 'mp4'
-
+            ydl_opts['format'] = 'best[ext=mp4]/best'
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             ext = 'mp3' if fmt == 'mp3' else 'mp4'
