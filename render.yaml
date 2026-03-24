@@ -1,6 +1,0 @@
-services:
-  - type: web
-    name: vew-download-backend
-    env: python
-    buildCommand: "apt-get install -y ffmpeg && pip install -r requirements.txt"
-    startCommand: "python main.py"
