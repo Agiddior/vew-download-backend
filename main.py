@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file, Response
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import yt_dlp
 import os
@@ -25,33 +25,34 @@ def download():
         file_id = str(uuid.uuid4())
         output_path = f"/tmp/{file_id}.%(ext)s"
 
+        ydl_opts = {
+            'outtmpl': output_path,
+            'quiet': True,
+            'no_warnings': True,
+        }
+
         if fmt == 'mp3':
-            ydl_opts = {
-                'format': 'bestaudio/best',
-                'outtmpl': output_path,
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': '192',
-                }],
-                'quiet': True,
-                'no_warnings': True,
-            }
+            ydl_opts['format'] = 'bestaudio/best'
+            ydl_opts['postprocessors'] = [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }]
         else:
-            ydl_opts = {
-                'format': 'bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best[ext=mp4][height<=720]/best[height<=720]/best',
-                'outtmpl': output_path,
-                'quiet': True,
-                'no_warnings': True,
-                'merge_output_format': 'mp4',
-            }
+            ydl_opts['format'] = (
+                'bestvideo[ext=mp4][height<=720][vcodec^=avc]+bestaudio[ext=m4a]'
+                '/bestvideo[ext=mp4][height<=720]+bestaudio'
+                '/best[ext=mp4][height<=720]'
+                '/best[height<=720]'
+                '/best'
+            )
+            ydl_opts['merge_output_format'] = 'mp4'
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            title = info.get('title', 'video')
             ext = 'mp3' if fmt == 'mp3' else 'mp4'
+            title = info.get('title', 'video')
 
-        # Dosyayı bul
         final_path = None
         for f in os.listdir('/tmp'):
             if f.startswith(file_id):
@@ -59,7 +60,11 @@ def download():
                 break
 
         if not final_path or not os.path.exists(final_path):
-            return jsonify({"error": "Dosya oluşturulamadı"}), 500
+            return jsonify({"error": "Dosya bulunamadı"}), 500
+
+        file_size = os.path.getsize(final_path)
+        if file_size < 1000:
+            return jsonify({"error": "İndirilen dosya bozuk"}), 500
 
         mimetype = 'audio/mpeg' if fmt == 'mp3' else 'video/mp4'
 
@@ -69,15 +74,14 @@ def download():
             except:
                 pass
 
-        response = send_file(
+        threading.Timer(120, cleanup).start()
+
+        return send_file(
             final_path,
             mimetype=mimetype,
             as_attachment=True,
             download_name=f"{file_id}.{ext}"
         )
-
-        threading.Timer(60, cleanup).start()
-        return response
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
