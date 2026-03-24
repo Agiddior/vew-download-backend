@@ -32,11 +32,7 @@ def download():
         }
 
         if fmt == 'mp3':
-            ydl_opts['format'] = 'bestaudio/best'
-            ydl_opts['postprocessors'] = [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
+    ydl_opts['format'] = 'bestaudio[ext=m4a]/bestaudio/best'
             }]
         else:
             ydl_opts['format'] = 'best[ext=mp4]/best'
