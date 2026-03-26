@@ -31,11 +31,12 @@ def download():
             'no_warnings': True,
         }
 
+        # SÖZ DİZİMİ HATASI DÜZELTİLDİ
         if fmt == 'mp3':
-    ydl_opts['format'] = 'bestaudio[ext=m4a]/bestaudio/best'
-            }]
+            ydl_opts['format'] = 'bestaudio[ext=m4a]/bestaudio/best'
         else:
             ydl_opts['format'] = 'best[ext=mp4]/best'
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             ext = 'mp3' if fmt == 'mp3' else 'mp4'
@@ -62,7 +63,8 @@ def download():
             except:
                 pass
 
-        threading.Timer(120, cleanup).start()
+        # İndirme sonrası dosyayı sunucudan sil ki hafıza dolmasın
+        threading.Timer(120.0, cleanup).start()
 
         return send_file(
             final_path,
